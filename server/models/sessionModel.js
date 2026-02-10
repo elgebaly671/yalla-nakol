@@ -24,6 +24,9 @@ const Session = sequelize.define("Session", {
         type: DataTypes.ENUM('active', 'inactive'),
         allowNull: false,
         defaultValue: 'active'
+    },
+    sessionLink: {
+        type: DataTypes.STRING,
     }
 }, {
     tableName: 'sessions',

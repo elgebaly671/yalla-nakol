@@ -1,7 +1,9 @@
 import express from "express";
 import { sequelize } from "./config/database.js";
-import Session from "./models/sessionModel.js"; // Import models so they get registered
+import Session from "./models/sessionModel.js";
+import InSession from "./models/InSession.js";
 import userRouter from "./routes/userRoutes.js";
+import sessionRouter from "./routes/sessionRoutes.js";
 import cors from "cors";
 
 const app = express();
@@ -12,6 +14,7 @@ app.use(cors({
     credentials: true
 }));
 app.use("/api/user", userRouter);
+app.use("/api/sessions", sessionRouter);
 app.get('/', (req, res) => {
     res.send("Hello");
 });
