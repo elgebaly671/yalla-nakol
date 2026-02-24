@@ -112,16 +112,16 @@ export const checkInSession = async (req, res) => {
 
 export const joinSession = async (req, res) => {
     try {
-        const{ userId, sessionId} = req.body;
-
-        if(!userId || !sessionId){
+        const{ userId, sessionId, userName} = req.body;
+        console.log(userId, sessionId, userName)
+        if(!userId || !sessionId || !userName){
             res.json({
                 success: false,
                 message: "required userId or sessionId"
             })
         }
         const inSession = await InSession.create({
-            userId, sessionId
+            userId, sessionId, userName
         })
         res.json({
             success: true,
@@ -129,6 +129,40 @@ export const joinSession = async (req, res) => {
         })
     } catch (error) {
         res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+export const leaveSession = async (req, res) => {
+    try {
+        const {userId, sessionId} = req.body;
+        if(!userId || !sessionId){
+            res.json({
+                success: false,
+                message: "userId or sessionId is required"
+            })
+        }
+        const inSession = await InSession.findOne({
+            where: {
+                userId, sessionId
+            }
+        })
+        if(!inSession){
+            return res.json({
+                success: false,
+                message: "You are not in this session"
+            })
+        }
+        await inSession.destroy();
+        console.log("You left the session successfully")
+        res.json({
+            success: true,
+            inSession: false
+        })
+    } catch (error) {
+        res.json({
             success: false,
             message: error.message
         })

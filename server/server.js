@@ -2,6 +2,7 @@ import express from "express";
 import { sequelize } from "./config/database.js";
 import Session from "./models/sessionModel.js";
 import InSession from "./models/InSession.js";
+import Items from "./models/Items.js";
 import userRouter from "./routes/userRoutes.js";
 import sessionRouter from "./routes/sessionRoutes.js";
 import cors from "cors";

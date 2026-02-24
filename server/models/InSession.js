@@ -9,6 +9,10 @@ const InSession = sequelize.define('InSession', {
     sessionId: {
         type: DataTypes.UUID,
         allowNull: false
+    },
+    userName: {
+        type: DataTypes.STRING,
+        allowNull: false
     }
 }, {
     tableName: 'insession',

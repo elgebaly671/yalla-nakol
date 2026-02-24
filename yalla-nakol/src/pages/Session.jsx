@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState } from 'react'
 import { AppContext } from '../App'
 import axios from 'axios'
 import { FaCopy } from "react-icons/fa";
+import { CiCircleChevLeft } from "react-icons/ci";
 import toast, { Toaster } from 'react-hot-toast'
 
 const Session = () => {
@@ -18,22 +19,28 @@ const Session = () => {
                 userId,
                 sessionId
             })
+            console.log(data)
             if (data.inSession) {
-                toast.success("You are already in this session")
+                //   toast.success("You are already in this session")
                 setInSession(true)
             }
         } catch (error) {
             toast.error("Failed to check in session")
         }
     }
-    const handleJoinSession = async () => {
+    const handleJoinSession = async (e) => {
         try {
+            e.preventDefault()
+            console.log(e.target.userName.value)
             const { data } = await axios.post(`${backendUrl}/api/sessions/join-session`, {
                 userId,
-                sessionId
+                sessionId,
+                userName: e.target.userName.value
             })
-            toast.success("You joined the session successfully")
-            setInSession(true)
+            if (data.success) {
+                toast.success("You joined the session successfully")
+                setInSession(true)
+            }
         } catch (error) {
             toast.error("Failed to join session")
         }
@@ -51,6 +58,21 @@ const Session = () => {
             setLoading(false)
         }
     }
+    const handleLeaveSession = async () => {
+        try {
+            const { data } = await axios.post(`${backendUrl}/api/sessions/leave-session`, {
+                userId,
+                sessionId
+            })
+            console.log("data:", data)
+            if (data.success) {
+                toast.success("You left the session successfully")
+                setInSession(false)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
     useEffect(() => {
         checkInSession()
         fetchSession()
@@ -62,11 +84,21 @@ const Session = () => {
         return <div>Session not found</div>
     }
     if (!inSession) {
-        return <div className='flex flex-col items-center gap-2 justify-center h-screen'>
-            <p>You are not in this session</p>
-            <button onClick={handleJoinSession} className='bg-none text-slate-600 px-4 py-2 rounded-lg border border-slate-600 hover:bg-slate-600 hover:text-white transition-colors duration-200 cursor-pointer'>Join Session</button>
-        </div>
+        return (
+            <div className='flex flex-col items-center gap-2 justify-center h-screen'>
+                <p>You are not in this session</p>
+                <form onSubmit={(e) => handleJoinSession(e)} className='flex items-center flex-col'>
+                    <input type="text" name='userName' placeholder='Enter your username' className='border border-slate-300 rounded-lg py-2 px-4 mb-2 text-center' required />
+                    <button type='submit' className='border border-slate-700 rounded-lg py-2 px-4'>Join Session</button>
+                </form>
+
+                <button onClick={() => window.location.href = "/"} className='flex items-center gap-2 cursor-pointer text-slate-500 rounded-lg py-2 px-4'>
+                    <CiCircleChevLeft className='w-6 h-6' /> Or Back to Home
+                </button>
+            </div>
+        )
     }
+
     const colorOptions = (status) => {
         switch (status) {
             case "active":
@@ -79,12 +111,20 @@ const Session = () => {
     }
     return (
         <div className='p-4 '>
-            <div className='flex items-center gap-3'>
-                <h1 className='text-3xl font-semibold'>{session.title}</h1>
-                <span className={`px-2 py-1 rounded-full ${colorOptions(session.status)}`}>
-                    {session.status}
-                </span>
+            <div className='flex justify-between'>
+                <div className='flex items-center gap-3'>
+                    <h1 className='text-3xl font-semibold'>{session.title}</h1>
+                    <span className={`px-2 py-1 rounded-full ${colorOptions(session.status)}`}>
+                        {session.status}
+                    </span>
+                </div>
+                <button
+                    onClick={handleLeaveSession}
+                    className='sm:block md:hidden lg:hidden bg-none text-red-500 border border-red-500 rounded-lg px-4 py-2 cursor-pointer'>
+                    Leave
+                </button>
             </div>
+
             <p>Share this session with your friends: <span className='text-slate-600'>{window.location.href}</span> <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success("Session link copied to clipboard") }}
                 className='bg-none text-slate-600 px-4 py-2 rounded-lg border border-slate-600 hover:bg-slate-600 hover:text-white transition-colors duration-200 cursor-pointer'
             ><FaCopy className='w-3 h-3' /></button></p>
