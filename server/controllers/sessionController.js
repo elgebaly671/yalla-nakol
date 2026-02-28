@@ -1,6 +1,7 @@
 
 import InSession from "../models/InSession.js";
 import Session from "../models/sessionModel.js";
+import Items from "../models/Items.js";
 
 export const getSessions = async (req, res) => {
     try {
@@ -81,7 +82,7 @@ export const checkInSession = async (req, res) => {
     try {
         const { userId, sessionId } = req.body;
         if (!userId || !sessionId) {
-            res.status(500).json({
+            return res.status(400).json({
                 success: false,
                 message: "Missing userId or sessionId"
             })
@@ -92,7 +93,7 @@ export const checkInSession = async (req, res) => {
                 sessionId
             }
         })
-        if(inSession){
+        if (inSession) {
             return res.json({
                 success: true,
                 inSession: true
@@ -112,10 +113,10 @@ export const checkInSession = async (req, res) => {
 
 export const joinSession = async (req, res) => {
     try {
-        const{ userId, sessionId, userName} = req.body;
+        const { userId, sessionId, userName } = req.body;
         console.log(userId, sessionId, userName)
-        if(!userId || !sessionId || !userName){
-            res.json({
+        if (!userId || !sessionId || !userName) {
+            return res.json({
                 success: false,
                 message: "required userId or sessionId"
             })
@@ -137,9 +138,9 @@ export const joinSession = async (req, res) => {
 
 export const leaveSession = async (req, res) => {
     try {
-        const {userId, sessionId} = req.body;
-        if(!userId || !sessionId){
-            res.json({
+        const { userId, sessionId } = req.body;
+        if (!userId || !sessionId) {
+            return res.json({
                 success: false,
                 message: "userId or sessionId is required"
             })
@@ -149,7 +150,7 @@ export const leaveSession = async (req, res) => {
                 userId, sessionId
             }
         })
-        if(!inSession){
+        if (!inSession) {
             return res.json({
                 success: false,
                 message: "You are not in this session"
@@ -160,6 +161,58 @@ export const leaveSession = async (req, res) => {
         res.json({
             success: true,
             inSession: false
+        })
+    } catch (error) {
+        res.json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+export const getSessionItems = async (req, res) => {
+    try {
+        const { sessionId } = req.query;
+        if (!sessionId) {
+            return res.json({
+                success: false,
+                message: "sessionId is required"
+            })
+        }
+        const items = await Items.findAll({
+            where: {
+                sessionId
+            }
+        })
+        res.json({
+            success: true,
+            items
+        })
+    } catch (error) {
+        res.json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+export const getSessionUsers = async (req, res) => {
+    try {
+        const { sessionId } = req.query;
+        if (!sessionId) {
+            return res.json({
+                success: false,
+                message: "sessionId is required"
+            })
+        }
+        const users = await InSession.findAll({
+            where: {
+                sessionId
+            }
+        })
+        res.json({
+            success: true,
+            users
         })
     } catch (error) {
         res.json({
