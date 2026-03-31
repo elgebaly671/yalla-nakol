@@ -2,8 +2,10 @@ import express from "express";
 import { sequelize } from "./config/database.js";
 import Session from "./models/sessionModel.js";
 import InSession from "./models/InSession.js";
+import RequestJoin from "./models/RequestJoin.js";
 import Items from "./models/Items.js";
 import userRouter from "./routes/userRoutes.js";
+import ItemSharing from "./models/ItemSharing.js";
 import sessionRouter from "./routes/sessionRoutes.js";
 import cors from "cors";
 import http from "http";
@@ -38,6 +40,27 @@ io.on("connection", (socket) => {
     })
     socket.on('leave_session', (data) =>{
         socket.to(data.sessionId).emit('recieve_leave')
+    })
+    socket.on('request_join', (data) => {
+        socket.to(data.sessionId).emit('recieve_request', data)
+    })
+    socket.on('accept_request', (data) => {
+        socket.to(data.sessionId).emit('recieve_accept', data)
+    })
+    socket.on('reject_request', (data) => {
+        socket.to(data.sessionId).emit('recieve_reject', data)
+    })
+    socket.on('accept_all_requests', (data) => {
+        socket.to(data.sessionId).emit('recieve_accept_all', data)
+    })
+    socket.on('reject_all_requests', (data) => {
+        socket.to(data.sessionId).emit('recieve_reject_all', data)
+    })  
+    socket.on('added_item', (data)=>{
+        socket.to(data.sessionId).emit('recieve_item', data)
+    })
+    socket.on('deleted_item', (data)=>{
+        socket.to(data.sessionId).emit('recieve_delete_item', data)
     })
 })
 server.listen(3000, async () => {

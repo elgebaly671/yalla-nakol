@@ -9,6 +9,14 @@ const sequelize = new Sequelize(
     dialect: 'mysql',
     port: 3306,
     autoLoadModels: true,
+    define: {
+        charset: 'utf8mb4',
+        collate: 'utf8mb4_unicode_ci',
+        timestamps: true
+    },
+    dialectOptions:{
+        charset: 'utf8mb4'
+    }
 
 });
 
