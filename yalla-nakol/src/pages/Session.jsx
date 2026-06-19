@@ -1,11 +1,13 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { AppContext } from '../App'
 import axios from 'axios'
-import { FaCopy, FaCheck, FaTimes, FaPlus, FaUsers, FaShoppingCart, FaTrash } from "react-icons/fa";
+import { FaCopy, FaCheck, FaTimes, FaPlus, FaUsers, FaShoppingCart, FaTrash, FaCalculator } from "react-icons/fa";
 import { CiCircleChevLeft } from "react-icons/ci";
 import toast, { Toaster } from 'react-hot-toast'
 import Select from 'react-select'
 import io from 'socket.io-client'
+import { IoMdArrowBack } from "react-icons/io";
+import { useNavigate } from 'react-router-dom';
 
 const socket = io.connect("http://localhost:3000")
 const Session = () => {
@@ -27,6 +29,7 @@ const Session = () => {
         label: user.userName
     }))
     const sessionId = window.location.href.split('/').pop()
+    const navigate = useNavigate();
     const JoinRoom = () => {
         socket.emit('join_room', sessionId);
     }
@@ -69,31 +72,13 @@ const Session = () => {
             console.log(data)
             if (data.inSession) {
                 //   toast.success("You are already in this session")
-                setInSession(true)
+                setInSession(true )
             }
         } catch (error) {
             toast.error("Failed to check in session")
         }
     }
-    const handleJoinSession = async (e) => {
-        try {
-            e.preventDefault()
-            console.log(e.target.userName.value)
-            const { data } = await axios.post(`${backendUrl}/api/sessions/join-session`, {
-                userId,
-                sessionId,
-                userName: e.target.userName.value
-            })
-            if (data.success) {
-                toast.success("You joined the session successfully")
-                socket.emit("Joined_Session", { sessionId })
-                JoinRoom();
-                setInSession(true)
-            }
-        } catch (error) {
-            toast.error("Failed to join session")
-        }
-    }
+    
     const fetchSession = async () => {
         try {
             const { data } = await axios.get(`${backendUrl}/api/sessions/get-session`, {
@@ -101,6 +86,7 @@ const Session = () => {
             })
             setSession(data.session)
             setIsOwner(data.session.createdBy === userId)
+            console.log(data)
             if (data.session.createdBy === userId) {
                 getSessionQueue()
             }
@@ -168,6 +154,26 @@ const Session = () => {
             }
             setItemContributors(contributorsMap)
         } catch (error) {
+            toast.error(error.message)
+        }
+    }
+    const handleOwnerRejoin = async (e) => {
+        try {
+            e.preventDefault()
+            const { data } = await axios.post(`${backendUrl}/api/sessions/join-session`, {
+                userId,
+                sessionId,
+                userName: e.target.userName.value
+            })
+            if (data.success) {
+                toast.success("You rejoined the session successfully")
+                setInSession(true)
+                fetchSessionUsers()
+                JoinRoom();
+                socket.emit("join_session", { sessionId })
+            }
+        } catch (error) {
+            console.log(error)
             toast.error(error.message)
         }
     }
@@ -271,7 +277,7 @@ const Session = () => {
         })
         socket.on('recieve_item', (data) => {
             fetchSessionItems()
-        })  
+        })
         socket.on('recieve_delete_item', (data) => {
             fetchSessionItems()
         })
@@ -282,7 +288,7 @@ const Session = () => {
             socket.off("recieve_delete_item")
         }
     }, [])
- if (loading) {
+    if (loading) {
         return (
             <div className="flex justify-center items-center h-screen bg-slate-50">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-700"></div>
@@ -312,20 +318,48 @@ const Session = () => {
         )
     }
 
-    if (!inSession) {
+    if (!inSession && isOwner) {
+        return (
+            <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Rejoin Your Session</h2>
+                    <p className="text-slate-500 mb-6">You left this session. Enter your name to rejoin.</p>
+
+                    <form onSubmit={(e) => handleOwnerRejoin(e)} className='flex flex-col gap-4'>
+                        <input
+                            type="text"
+                            name='userName'
+                            placeholder='Enter your username'
+                            className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all outline-none'
+                            required
+                        />
+                        <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors duration-200'>
+                            Rejoin Session
+                        </button>
+                    </form>
+
+                    <button onClick={() => window.location.href = "/"} className='mt-6 flex items-center justify-center gap-2 w-full text-slate-500 hover:text-slate-800 transition-colors'>
+                        <CiCircleChevLeft className='w-5 h-5' /> Back to Home
+                    </button>
+                </div>
+            </div>
+        )
+    }
+
+    if (!inSession && !isOwner) {
         return (
             <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
                 <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
                     <h2 className="text-2xl font-bold text-slate-800 mb-2">Join Session</h2>
                     <p className="text-slate-500 mb-6">You need to request access to view this session.</p>
-                    
+
                     <form onSubmit={(e) => handleRequestJoin(e)} className='flex flex-col gap-4'>
-                        <input 
-                            type="text" 
-                            name='userName' 
-                            placeholder='Enter your username' 
-                            className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all outline-none' 
-                            required 
+                        <input
+                            type="text"
+                            name='userName'
+                            placeholder='Enter your username'
+                            className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all outline-none'
+                            required
                         />
                         <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors duration-200'>
                             Request to Join
@@ -351,7 +385,13 @@ const Session = () => {
     return (
         <div className='min-h-screen bg-slate-50 pb-12'>
             <div className='max-w-5xl mx-auto px-4 py-8 space-y-6'>
-                
+                <button 
+                onClick={() => navigate('/')}
+                className='flex items-center gap-2 text-xl text-black/50 hover:text-black transition-all cursor-pointer'>
+                    <IoMdArrowBack />
+                    Home page
+                    
+                </button>
                 {/* Header Card */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div className='flex flex-col gap-2'>
@@ -374,7 +414,7 @@ const Session = () => {
                             </div>
                         )}
                     </div>
-                    
+
                     <button onClick={handleLeaveSession} className='text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-5 py-2.5 font-medium transition-colors w-full md:w-auto'>
                         Leave Session
                     </button>
@@ -382,10 +422,10 @@ const Session = () => {
 
                 {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    
+
                     {/* Left Column: Users & Queue */}
                     <div className="space-y-6 lg:col-span-1">
-                        
+
                         {/* Owner Queue Panel */}
                         {isOwner && queue && queue.length > 0 && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -393,14 +433,14 @@ const Session = () => {
                                     <span className="bg-yellow-100 text-yellow-700 p-1.5 rounded-md"><FaUsers /></span>
                                     Pending Requests ({queue.length})
                                 </h3>
-                                
+
                                 <div className="space-y-3 mb-4 max-h-48 overflow-y-auto pr-2">
                                     {queue.map((user) => (
                                         <div key={user.userId} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
                                             <span className="font-medium text-slate-700">{user.userName}</span>
                                             <div className="flex gap-2">
                                                 <button onClick={() => handleAcceptRequest(user.userId)} className="p-1.5 bg-green-100 text-green-700 hover:bg-green-200 rounded-md transition-colors"><FaCheck size={14} /></button>
-                                                <button onClick={() => handleRejectRequest(user.userId)} className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors"><FaTimes size={14}/></button>
+                                                <button onClick={() => handleRejectRequest(user.userId)} className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors"><FaTimes size={14} /></button>
                                             </div>
                                         </div>
                                     ))}
@@ -436,17 +476,25 @@ const Session = () => {
                     <div className="lg:col-span-2 space-y-6">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                    <FaShoppingCart className="text-slate-400"/> Session Items
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <FaShoppingCart className="text-slate-400" /> Session Items
                                 </h3>
+                                <p className="text-sm text-slate-500">Note: For taxes and delievery services you can add them as separate items and select all members as contrubtors</p>
+                                </div>
                                 {!showAddItem && (
-                                    <button 
-                                        onClick={() => setShowAddItem(true)} 
+                                    <button
+                                        onClick={() => setShowAddItem(true)}
                                         className='flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-slate-700 transition-colors'>
                                         <FaPlus size={12} /> Add Item
                                     </button>
                                 )}
+                                
                             </div>
+                            <button className={`flex items-center gap-2 w-full justify-center mb-4 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors ${items.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <FaCalculator size={12} /> Calculate Session Total
+                            </button>
+                            
 
                             {/* Add Item Form */}
                             {showAddItem && (
@@ -459,7 +507,7 @@ const Session = () => {
                                         <input type="text" placeholder='Item Name' name='itemName' className='col-span-1 sm:col-span-2 border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
                                         <input type="number" step="0.01" placeholder='Price' name='itemPrice' className='border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
                                         <input type="number" placeholder='Quantity' name='itemQuantity' className='border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
-                                        
+
                                         <div className="col-span-1 sm:col-span-2">
                                             <Select
                                                 className='react-select-container'
@@ -468,10 +516,11 @@ const Session = () => {
                                                 value={selectedOptions}
                                                 onChange={handleSelectChange}
                                                 isMulti={true}
-                                                placeholder='Select who shares this...' 
+                                                placeholder='Select who shares this...'
                                             />
+                                            <button  type="button" className='bg-green-500 text-white mt-2 p-2 rounded-lg' onClick={()=>setSelectedOptions(listOfUsers)}>select all</button>
                                         </div>
-                                        
+
                                         <button type="submit" className='col-span-1 sm:col-span-2 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors'>
                                             Save Item
                                         </button>
@@ -494,20 +543,20 @@ const Session = () => {
                                                 </div>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                            {/* Contributors list for the item */}
-                                            {itemContributors[item.id] && itemContributors[item.id].length > 0 && (
-                                                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center">
-                                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Shared by:</span>
-                                                    {itemContributors[item.id].map((user) => (
-                                                        <span key={user.userId} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
-                                                            {user.userName}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <button className='text-red-500 bg-red-200 p-2 rounded-lg cursor-pointer hover:bg-red-300 transition-colors'
-                                            onClick={() => handleDeleteItem(item.id)}
-                                            ><FaTrash/></button>
+                                                {/* Contributors list for the item */}
+                                                {itemContributors[item.id] && itemContributors[item.id].length > 0 && (
+                                                    <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center">
+                                                        <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Shared by:</span>
+                                                        {itemContributors[item.id].map((user) => (
+                                                            <span key={user.userId} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
+                                                                {user.userName}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <button className='text-red-500 bg-red-200 p-2 rounded-lg cursor-pointer hover:bg-red-300 transition-colors'
+                                                    onClick={() => handleDeleteItem(item.id)}
+                                                ><FaTrash /></button>
                                             </div>
                                         </div>
                                     ))}

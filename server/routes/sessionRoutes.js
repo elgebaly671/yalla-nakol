@@ -16,7 +16,8 @@ import {
     acceptAllRequests,
     addItem,
     getItemContributors,
-    deleteItem
+    deleteItem,
+    calculateSessionTotal
 } from "../controllers/sessionController.js";
 
 const sessionRouter = Router();
@@ -38,5 +39,6 @@ sessionRouter.post("/accept-all-requests", acceptAllRequests);
 sessionRouter.post("/add-item", addItem);
 sessionRouter.get("/get-item-contributors/:itemId", getItemContributors);
 sessionRouter.post("/delete-item", deleteItem);
+sessionRouter.get("/calculate-total/:sessionId", calculateSessionTotal);
 // sessionRouter.post("/reject-all-requests", rejectAllRequests);
 export default sessionRouter;

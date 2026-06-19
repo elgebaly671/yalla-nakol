@@ -1,6 +1,7 @@
 import {sequelize} from "../config/database.js"
 import { DataTypes } from "sequelize"
 
+
 const Items = sequelize.define('Items', {
     id: {
         type: DataTypes.INTEGER,
@@ -31,5 +32,4 @@ const Items = sequelize.define('Items', {
     tableName: 'items',
     timestamps: false
 })
-
 export default Items

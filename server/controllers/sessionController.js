@@ -1,22 +1,34 @@
 
-import InSession from "../models/InSession.js";
 import Session from "../models/sessionModel.js";
 import RequestJoin from "../models/RequestJoin.js";
-import Items from "../models/Items.js";
-import ItemSharing from "../models/ItemSharing.js";
-
+import {Items, ItemSharing, InSession} from '../models/associations.js'
 export const getSessions = async (req, res) => {
     try {
         const { userId } = req.query;
-        console.log(userId);
+        
         const sessions = await Session.findAll({
             where: {
                 createdBy: userId
             }
         })
+        let results = []
+        sessions.forEach(async (session)=> {
+            console.log(session)
+            const inSession = await InSession.findOne({
+                where: {sessionId: session.id}
+            })
+            if(inSession){
+                results.push({sessionId: session.id, isInSession: true})
+                console.log("here")
+            }else{
+                results.push(session.id)
+                console.log("not here")
+            }
+        })
         res.json({
             success: true,
-            sessions
+            sessions,
+            results
         })
     } catch (error) {
         res.status(500).json({
@@ -28,8 +40,8 @@ export const getSessions = async (req, res) => {
 
 export const createSession = async (req, res) => {
     try {
-        const { userId, title } = req.body;
-        if (!userId || !title) {
+        const { userId, title, userName } = req.body;
+        if (!userId || !title || !userName) {
             return res.status(400).json({
                 success: false,
                 message: "Missing required fields"
@@ -41,6 +53,14 @@ export const createSession = async (req, res) => {
         })
         const sessionLink = `${process.env.FRONTEND_URL}/session/${session.id}`;
         await session.update({ sessionLink });
+
+        // Add the session creator to the InSession table
+        await InSession.create({
+            userId,
+            sessionId: session.id,
+            userName
+        });
+
         res.json({
             success: true,
             session
@@ -536,6 +556,42 @@ export const deleteItem = async (req, res) => {
     } catch (error) {
         res.json({
             success: false,
+            message: error.message
+        })
+    }
+}
+
+export const calculateSessionTotal = async (req, res)=>{
+    try {
+        const {sessionId} = req.params;
+        if(!sessionId){
+            res.json({
+                success:false,
+                message: "SessionId is required"
+            })
+        }
+        const itemsList = await Items.findAll({
+            where: {
+                sessionId
+            },
+            include: [{
+                model:ItemSharing,
+                as: 'sharer',
+                include:[{
+                    model:InSession,
+                    as: 'userInfo',
+                    attributes: ['userName']
+                }]
+            }]
+        })
+        return res.json({
+            success: true,
+            message:"Items list ",
+            itemsList
+        })
+    } catch (error) {
+        res.json({
+            success:false,
             message: error.message
         })
     }
