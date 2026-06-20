@@ -66,7 +66,7 @@ const Home = () => {
     const fetchSessions = async () => {
         try {
             const { data, error } = await supabase
-                .from('session')
+                .from('sessions')
                 .select('*')
                 .eq('createdBy', userId)
                 .order('createdAt', { ascending: false });
