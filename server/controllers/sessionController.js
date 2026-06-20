@@ -2,6 +2,7 @@
 import Session from "../models/sessionModel.js";
 import RequestJoin from "../models/RequestJoin.js";
 import {Items, ItemSharing, InSession} from '../models/associations.js'
+import { where } from "sequelize";
 export const getSessions = async (req, res) => {
     try {
         const { userId } = req.query;
@@ -584,10 +585,52 @@ export const calculateSessionTotal = async (req, res)=>{
                 }]
             }]
         })
+
+        let sessionTotal = 0;
+        const userReceipts = [];
+        itemsList.forEach((item)=>{
+            const itemLineTotal = parseFloat(item.price) * parseInt(item.quantity);
+            sessionTotal += itemLineTotal;
+
+            const sharers = item.sharer || [];
+
+            if(sharers.length > 0){
+                const splitAmount = itemLineTotal / sharers.length;
+                sharers.forEach((shareRecord) => {
+                    const userId = shareRecord.userId;
+                    const userName = shareRecord.userInfo.userName;
+
+                    if(!userReceipts[userId]){
+                        userReceipts[userId] = {
+                            userId,
+                            userName,
+                            totalOwed: 0,
+                            itemizedBreakdown:[]
+                        }
+                    }
+
+                    userReceipts[userId].totalOwed += splitAmount;
+                    userReceipts[userId].itemizedBreakdown.push({
+                        itemName: item.name,
+                        splitShare: Number(splitAmount.toFixed(2))
+                    })
+                    console.log(userReceipts[userId])
+
+                })
+            }
+        })
+        const session = await Session.findByPk(sessionId);
+        session.totalExpenses = sessionTotal;
+        session.save();
+        const finalReceipts = Object.values(userReceipts).map(receipt=>({
+            ...receipt,
+            totalOwed: Number(receipt.totalOwed.toFixed(2))
+        }))
         return res.json({
             success: true,
             message:"Items list ",
-            itemsList
+            sessionTotal: Number(sessionTotal.toFixed(2)),
+            receipts: finalReceipts
         })
     } catch (error) {
         res.json({

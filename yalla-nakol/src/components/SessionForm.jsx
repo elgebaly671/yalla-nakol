@@ -10,7 +10,7 @@ const SessionForm = ({ isVisible, onClose, children }) => {
     return (
         <div
             id='ModelContainer'
-            className='fixed inset-0 bg-black/20 backdrop-blur-sm flex justify-center items-center'
+            className='fixed inset-0 z-90 bg-black/20 backdrop-blur-sm flex justify-center items-center'
             onClick={hanldeClose}>
             <div className='bg-white w-[400px] p-4 rounded-xl'>
                 <div className='flex items-center justify-between'>

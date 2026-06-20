@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
 import Session from './pages/Session'
 import { Toaster } from 'react-hot-toast'
+import LandingPage from './pages/LandingPage'
 export const AppContext = createContext();
 function App() {
   const [count, setCount] = useState(0)
@@ -15,8 +16,9 @@ function App() {
     <BrowserRouter>
       <AppContext.Provider value={{ backendUrl, userId, setUserId }}>
         <Routes>
-          <Route path='/' element={<Home />}></Route>
+          <Route path='/' element={<LandingPage />}></Route>
           <Route path='/session/:sessionId' element={<Session />}></Route>
+          <Route path='/home' element={<Home/>}></Route>
         </Routes>
       </AppContext.Provider>
     </BrowserRouter>

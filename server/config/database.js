@@ -3,21 +3,18 @@ import dotenv from "dotenv"
 
 dotenv.config();
 
-const sequelize = new Sequelize(
-    process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
-    host: process.env.DB_HOST,
-    dialect: 'mysql',
-    port: 3306,
-    autoLoadModels: true,
-    define: {
-        charset: 'utf8mb4',
-        collate: 'utf8mb4_unicode_ci',
-        timestamps: true
-    },
-    dialectOptions:{
-        charset: 'utf8mb4'
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false // Required by many cloud databases like Supabase
     }
-
+  }
 });
+// Test the connection
+sequelize.authenticate()
+  .then(() => console.log('Successfully connected to Supabase via Sequelize!'))
+  .catch(err => console.error('Unable to connect to the database:', err));
 
 export { sequelize };

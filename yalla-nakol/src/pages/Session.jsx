@@ -1,378 +1,382 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { AppContext } from '../App'
-import axios from 'axios'
-import { FaCopy, FaCheck, FaTimes, FaPlus, FaUsers, FaShoppingCart, FaTrash, FaCalculator } from "react-icons/fa";
+import { FaCopy, FaCheckCircle, FaTimes, FaPlus, FaUsers, FaShoppingCart, FaTrash, FaCalculator } from "react-icons/fa";
 import { CiCircleChevLeft } from "react-icons/ci";
 import toast, { Toaster } from 'react-hot-toast'
 import Select from 'react-select'
-import io from 'socket.io-client'
-import { IoMdArrowBack } from "react-icons/io";
 import { useNavigate } from 'react-router-dom';
+import PopUp from '../components/PopUp';
+import { supabase } from '../supabase-client'; // Import Supabase Client
 
-const socket = io.connect("http://localhost:3000")
 const Session = () => {
-    const { backendUrl, userId } = useContext(AppContext)
-    axios.defaults.withCredentials = true;
+    const { userId } = useContext(AppContext)
     const [session, setSession] = useState(null)
     const [users, setUsers] = useState([])
     const [loading, setLoading] = useState(true)
     const [isOwner, setIsOwner] = useState(false)
     const [inSession, setInSession] = useState(false)
     const [showAddItem, setShowAddItem] = useState(false)
+    const [showLeaveSession, setShowLeave] = useState(false)
     const [items, setItems] = useState([])
     const [selectedOptions, setSelectedOptions] = useState([])
     const [waitingAccept, setWaitingAccept] = useState(false);
     const [queue, setQueue] = useState([])
     const [itemContributors, setItemContributors] = useState({})
+    
+    // Receipt States
+    const [receipts, setReceipts] = useState(null);
+    const [sessionTotal, setSessionTotal] = useState(0);
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [isCalculating, setIsCalculating] = useState(false);
+
+    const navigate = useNavigate();
+    const sessionId = window.location.href.split('/').pop();
+
     const listOfUsers = users.map((user) => ({
         value: user.userId,
         label: user.userName
     }))
-    const sessionId = window.location.href.split('/').pop()
-    const navigate = useNavigate();
-    const JoinRoom = () => {
-        socket.emit('join_room', sessionId);
-    }
-    const checkWaitingAccept = async () => {
-        try {
-            const { data } = await axios.post(`${backendUrl}/api/sessions/check-waiting-accept`, {
-                userId,
-                sessionId
-            })
-            console.log(data)
-            if (data.waitingAccept) {
-                //   toast.success("You are already in this session")
-                setWaitingAccept(true)
-            }
-        } catch (error) {
-            toast.error("Failed to check waiting accept")
-        }
-    }
-    const getSessionQueue = async () => {
-        try {
-            const { data } = await axios.get(`${backendUrl}/api/sessions/get-session-queue`, {
-                params: {
-                    sessionId
-                }
-            })
-            console.log(data)
-            if (data.success) {
-                setQueue(data.queue)
-            }
-        } catch (error) {
-            toast.error("Failed to get session queue")
-        }
-    }
-    const checkInSession = async () => {
-        try {
-            const { data } = await axios.post(`${backendUrl}/api/sessions/check-in-session`, {
-                userId,
-                sessionId
-            })
-            console.log(data)
-            if (data.inSession) {
-                //   toast.success("You are already in this session")
-                setInSession(true )
-            }
-        } catch (error) {
-            toast.error("Failed to check in session")
-        }
-    }
-    
-    const fetchSession = async () => {
-        try {
-            const { data } = await axios.get(`${backendUrl}/api/sessions/get-session`, {
-                params: { sessionId }
-            })
-            setSession(data.session)
-            setIsOwner(data.session.createdBy === userId)
-            console.log(data)
-            if (data.session.createdBy === userId) {
-                getSessionQueue()
-            }
-        } catch (error) {
-            toast.error("Failed to fetch session")
-            console.log(error)
-        } finally {
-            setLoading(false)
-        }
-    }
-    const fetchSessionItems = async () => {
-        try {
-            console.log("fetching items")
-            const { data } = await axios.get(`${backendUrl}/api/sessions/get-session-items`, {
-                params: { sessionId }
-            })
-            console.log(data)
-            if (data.success) {
-                setItems(data.items)
-                fetchItemContributors(data.items)
-            }
-        } catch (error) {
-            toast.error(error.message)
-        }
-    }
-    const fetchSessionUsers = async () => {
-        try {
-            const { data } = await axios.get(`${backendUrl}/api/sessions/get-session-users`, {
-                params: { sessionId }
-            })
-            setUsers(data.users)
-        } catch (error) {
-            toast.error("Failed to fetch session users")
-        }
-    }
-    const handleLeaveSession = async () => {
-        try {
-            const { data } = await axios.post(`${backendUrl}/api/sessions/leave-session`, {
-                userId,
-                sessionId
-            })
-            console.log("data:", data)
 
-            if (data.success) {
-                toast.success("You left the session successfully")
-                JoinRoom();
-                socket.emit("leave_session", { sessionId })
-                setInSession(false)
-            }
-        } catch (error) {
-            toast.error(error.message)
-        }
-    }
-    const handleSelectChange = (selectedOption) => {
-        setSelectedOptions(selectedOption)
-    }
-    const fetchItemContributors = async (itemsList) => {
+   // 1. Unified Access Check (Checks both tables)
+    const checkUserAccess = async () => {
         try {
-            const contributorsMap = {}
-            for (const item of itemsList) {
-                const { data } = await axios.get(`${backendUrl}/api/sessions/get-item-contributors/${item.id}`)
-                if (data.success) {
-                    contributorsMap[item.id] = data.users
-                }
+            // First, check if they are already an active member
+            const { data: activeData } = await supabase
+                .from('insession')
+                .select('*')
+                .eq('sessionId', sessionId)
+                .eq('userId', userId)
+                .single();
+
+            if (activeData) {
+                setInSession(true);
+                setWaitingAccept(false);
+                return; // Stop here if they are already in
             }
-            setItemContributors(contributorsMap)
-        } catch (error) {
-            toast.error(error.message)
-        }
-    }
-    const handleOwnerRejoin = async (e) => {
-        try {
-            e.preventDefault()
-            const { data } = await axios.post(`${backendUrl}/api/sessions/join-session`, {
-                userId,
-                sessionId,
-                userName: e.target.userName.value
-            })
-            if (data.success) {
-                toast.success("You rejoined the session successfully")
-                setInSession(true)
-                fetchSessionUsers()
-                JoinRoom();
-                socket.emit("join_session", { sessionId })
-            }
-        } catch (error) {
-            console.log(error)
-            toast.error(error.message)
-        }
-    }
-    const handleRequestJoin = async (e) => {
-        try {
-            e.preventDefault()
-            console.log(userId, sessionId, e.target.userName.value)
-            const { data } = await axios.post(`${backendUrl}/api/sessions/request-join`, {
-                userId,
-                sessionId,
-                userName: e.target.userName.value
-            })
-            console.log(data)
-            if (data.success) {
-                toast.success("You requested to join the session successfully")
-                JoinRoom();
-                socket.emit("request_join", { sessionId })
+
+            // If not active, check if they are in the waiting list
+            const { data: pendingData } = await supabase
+                .from('requestjoin')
+                .select('*')
+                .eq('sessionId', sessionId)
+                .eq('userId', userId)
+                .single();
+
+            if (pendingData) {
                 setWaitingAccept(true);
             }
         } catch (error) {
-            console.log(error)
-            toast.error(error.message)
+            // It's normal to hit errors here if no rows are found, so we fail silently
+            console.error("Access check:", error.message);
         }
     }
-    const handleAddItem = async (e) => {
+
+    const fetchSession = async () => {
         try {
-            e.preventDefault()
-            const sharedWith = selectedOptions.map((option) => option.value)
-            const { data } = await axios.post(`${backendUrl}/api/sessions/add-item`, {
-                userId,
-                sessionId,
-                name: e.target.itemName.value,
-                price: e.target.itemPrice.value,
-                quantity: e.target.itemQuantity.value,
-                sharedWith
-            })
-            if (data.success) {
-                toast.success("Item added successfully")
-                setSelectedOptions([])
-                fetchSessionItems()
-                setShowAddItem(false)
-                socket.emit('added_item', { sessionId })
+            const { data, error } = await supabase
+                .from('sessions')
+                .select('*')
+                .eq('id', sessionId)
+                .single();
+            
+            if (error) throw error;
+            setSession(data);
+            setIsOwner(data.createdBy === userId);
+
+            if (data.createdBy === userId) {
+                getSessionQueue();
             }
         } catch (error) {
-            toast.error(error.message)
+            toast.error("Failed to fetch session");
+        } finally {
+            setLoading(false);
         }
     }
+
+    const fetchSessionItems = async () => {
+        try {
+            const { data: itemsData, error: itemsError } = await supabase
+                .from('items')
+                .select('*')
+                .eq('sessionId', sessionId);
+            
+            if (itemsError) throw itemsError;
+            setItems(itemsData || []);
+            fetchItemContributors(itemsData || []);
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    const fetchItemContributors = async (itemsList) => {
+        try {
+            if (itemsList.length === 0) return;
+            const itemIds = itemsList.map(i => i.id);
+            
+            const { data, error } = await supabase
+                .from('itemsharing')
+                .select('*')
+                .in('itemId', itemIds);
+
+            if (error) throw error;
+
+            const contributorsMap = {};
+            data.forEach(contributor => {
+                if (!contributorsMap[contributor.itemId]) {
+                    contributorsMap[contributor.itemId] = [];
+                }
+                contributorsMap[contributor.itemId].push(contributor);
+            });
+            
+            setItemContributors(contributorsMap);
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    const fetchSessionUsers = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('insession')
+                .select('*')
+                .eq('sessionId', sessionId)
+
+            if (error) throw error;
+            setUsers(data || []);
+        } catch (error) {
+            toast.error("Failed to fetch session users");
+        }
+    }
+
+    const getSessionQueue = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('requestjoin')
+                .select('*')
+                .eq('sessionId', sessionId);
+            
+            if (error) throw error;
+            setQueue(data || []);
+        } catch (error) {
+            toast.error("Failed to get session queue");
+        }
+    }
+
+    const handleRequestJoin = async (e) => {
+        e.preventDefault();
+        try {
+            const { error } = await supabase
+                .from('requestjoin')
+                .insert([{
+                    sessionId,
+                    userId,
+                    userName: e.target.userName.value,
+                }]);
+
+            if (error) throw error;
+            
+            toast.success("Request sent successfully");
+            setWaitingAccept(true);
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    // Note: We now pass the userName as well so we can copy it over
+    const handleAcceptRequest = async (targetUserId, targetUserName) => {
+        try {
+            // Step 1: Insert them into the active session_users table
+            const { error: insertError } = await supabase
+                .from('insession')
+                .insert([{
+                    sessionId,
+                    userId: targetUserId,
+                    userName: targetUserName
+                }]);
+
+            if (insertError) throw insertError;
+
+            // Step 2: Delete their request from the queue
+            const { error: deleteError } = await supabase
+                .from('requestjoin')
+                .delete()
+                .eq('sessionId', sessionId)
+                .eq('userId', targetUserId);
+
+            if (deleteError) throw deleteError;
+
+            toast.success("Accepted request successfully");
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    const handleOwnerRejoin = async (e) => {
+        e.preventDefault();
+        try {
+            const { error } = await supabase
+                .from('insession')
+                .upsert([{
+                    sessionId,
+                    userId,
+                    userName: e.target.userName.value,
+                }], { onConflict: 'sessionId,userId' });
+
+            if (error) throw error;
+            toast.success("Rejoined successfully");
+            setInSession(true);
+            fetchSessionUsers();
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    const handleLeaveSession = async () => {
+        try {
+            const { error } = await supabase
+                .from('insession')
+                .delete()
+                .eq('sessionId', sessionId)
+                .eq('userId', userId);
+
+            if (error) throw error;
+            
+            toast.success("You left the session");
+            setInSession(false);
+            setShowLeave(false);
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
+    const handleAddItem = async (e) => {
+        e.preventDefault();
+        try {
+            // 1. Insert Item
+            const { data: newItem, error: itemError } = await supabase
+                .from('items')
+                .insert([{
+                    sessionId,
+                    name: e.target.itemName.value,
+                    price: parseFloat(e.target.itemPrice.value),
+                    quantity: parseInt(e.target.itemQuantity.value)
+                }])
+                .select()
+                .single();
+
+            if (itemError) throw itemError;
+
+            // 2. Insert Contributors
+            if (selectedOptions.length > 0) {
+                const contributorInserts = selectedOptions.map(option => ({
+                    itemId: newItem.id,
+                    userId: option.value,
+                    userName: option.label
+                }));
+
+                const { error: contribError } = await supabase
+                    .from('itemsharing')
+                    .insert(contributorInserts);
+
+                if (contribError) throw contribError;
+            }
+
+            toast.success("Item added successfully");
+            setSelectedOptions([]);
+            setShowAddItem(false);
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
     const handleDeleteItem = async (itemId) => {
         try {
-            const { data } = await axios.post(`${backendUrl}/api/sessions/delete-item`, {
-                itemId
-            })
-            if (data.success) {
-                toast.success("Item deleted successfully")
-                fetchSessionItems()
-                socket.emit('deleted_item', { sessionId })
-            }
+            const { error } = await supabase
+                .from('items')
+                .delete()
+                .eq('id', itemId);
+
+            if (error) throw error;
+            toast.success("Item deleted");
         } catch (error) {
-            toast.error(error.message)
+            toast.error(error.message);
         }
     }
-    const handleAcceptRequest = async (userId) => {
-        try {
-            const { data } = await axios.post(`${backendUrl}/api/sessions/accept-request`, {
-                userId,
-                sessionId
-            })
-            console.log(data)
-            if (data.success) {
-                toast.success("You accepted the request successfully")
-                JoinRoom();
-                socket.emit("accept_request", { sessionId })
-                fetchSessionUsers()
-                setQueue(queue.filter((user) => user.userId !== userId))
-            }
-        } catch (error) {
-            console.log(error)
-            toast.error(error.message)
-        }
+
+    const handleSelectChange = (selectedOption) => {
+        setSelectedOptions(selectedOption)
     }
-    console.log(items)
+
+    // 2. Client-Side Receipt Calculation (Serverless Math)
+    const handleCalculateTotal = () => {
+        setIsCalculating(true);
+        let total = 0;
+        const userTotals = {}; 
+
+        // Initialize user objects
+        users.forEach(u => {
+            userTotals[u.userId] = { userId: u.userId, userName: u.userName, totalOwed: 0, itemizedBreakdown: [] };
+        });
+
+        // Calculate Splits
+        items.forEach(item => {
+            const itemTotal = item.price * item.quantity;
+            total += itemTotal;
+
+            const contributors = itemContributors[item.id] || [];
+            if (contributors.length > 0) {
+                const splitAmount = itemTotal / contributors.length;
+                
+                contributors.forEach(c => {
+                    if (!userTotals[c.userId]) {
+                        userTotals[c.userId] = { userId: c.userId, userName: c.userName, totalOwed: 0, itemizedBreakdown: [] };
+                    }
+                    userTotals[c.userId].totalOwed += splitAmount;
+                    userTotals[c.userId].itemizedBreakdown.push({
+                        itemName: item.name,
+                        splitShare: splitAmount.toFixed(2)
+                    });
+                });
+            }
+        });
+        
+        // Format for state display
+        const receiptsArray = Object.values(userTotals)
+            .map(r => ({ ...r, totalOwed: r.totalOwed.toFixed(2) }))
+            .filter(r => r.totalOwed > 0); // Only show users who owe money
+
+        setSessionTotal(total.toFixed(2));
+        setReceipts(receiptsArray);
+        setShowReceiptModal(true);
+        setIsCalculating(false);
+    }
+ 
+    // 3. Supabase Realtime Subscriptions (Replaces Socket.io)
     useEffect(() => {
-        checkInSession()
-        checkWaitingAccept()
-        fetchSession()
-        fetchSessionItems()
-        fetchSessionUsers()
-        JoinRoom()
-        socket.on("recieve_join", (data) => {
-            fetchSessionUsers()
+        checkUserAccess();
+        fetchSession();
+        fetchSessionItems();
+        fetchSessionUsers();
+
+          // Inside your useEffect
+    const channel = supabase.channel(`session_updates_${sessionId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `sessionId=eq.${sessionId}` }, () => {
+            fetchSessionItems(); 
         })
-        socket.on("recieve_request", (data) => {
-            getSessionQueue()
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'insession', filter: `sessionId=eq.${sessionId}` }, () => {
+            fetchSessionUsers(); 
+            checkUserAccess(); 
         })
-        socket.on("recieve_accept", (data) => {
-            setWaitingAccept(false)
-            checkInSession()
+        // Add this new listener for the queue table
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'requestjoin', filter: `sessionId=eq.${sessionId}` }, () => {
+            getSessionQueue(); 
+            checkUserAccess(); 
         })
-        socket.on('recieve_leave', (data) => {
-            fetchSessionUsers()
-        })
-        socket.on('recieve_item', (data) => {
-            fetchSessionItems()
-        })
-        socket.on('recieve_delete_item', (data) => {
-            fetchSessionItems()
-        })
+        .subscribe();
         return () => {
-            socket.off("recieve_join")
-            socket.off("recieve_leave")
-            socket.off("recieve_item")
-            socket.off("recieve_delete_item")
-        }
-    }, [])
-    if (loading) {
-        return (
-            <div className="flex justify-center items-center h-screen bg-slate-50">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-700"></div>
-            </div>
-        )
-    }
-
-    if (!session) {
-        return (
-            <div className="flex justify-center items-center h-screen bg-slate-50 text-slate-600 text-lg">
-                Session not found
-            </div>
-        )
-    }
-
-    if (waitingAccept) {
-        return (
-            <div className='flex flex-col items-center gap-4 justify-center h-screen bg-slate-50'>
-                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center max-w-md">
-                    <div className="animate-pulse bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <FaUsers className="w-8 h-8" />
-                    </div>
-                    <h2 className="text-xl font-semibold text-slate-800 mb-2">Request Sent</h2>
-                    <p className="text-slate-500">Waiting for the session owner to accept your request...</p>
-                </div>
-            </div>
-        )
-    }
-
-    if (!inSession && isOwner) {
-        return (
-            <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
-                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Rejoin Your Session</h2>
-                    <p className="text-slate-500 mb-6">You left this session. Enter your name to rejoin.</p>
-
-                    <form onSubmit={(e) => handleOwnerRejoin(e)} className='flex flex-col gap-4'>
-                        <input
-                            type="text"
-                            name='userName'
-                            placeholder='Enter your username'
-                            className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all outline-none'
-                            required
-                        />
-                        <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors duration-200'>
-                            Rejoin Session
-                        </button>
-                    </form>
-
-                    <button onClick={() => window.location.href = "/"} className='mt-6 flex items-center justify-center gap-2 w-full text-slate-500 hover:text-slate-800 transition-colors'>
-                        <CiCircleChevLeft className='w-5 h-5' /> Back to Home
-                    </button>
-                </div>
-            </div>
-        )
-    }
-
-    if (!inSession && !isOwner) {
-        return (
-            <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
-                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Join Session</h2>
-                    <p className="text-slate-500 mb-6">You need to request access to view this session.</p>
-
-                    <form onSubmit={(e) => handleRequestJoin(e)} className='flex flex-col gap-4'>
-                        <input
-                            type="text"
-                            name='userName'
-                            placeholder='Enter your username'
-                            className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all outline-none'
-                            required
-                        />
-                        <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors duration-200'>
-                            Request to Join
-                        </button>
-                    </form>
-
-                    <button onClick={() => window.location.href = "/"} className='mt-6 flex items-center justify-center gap-2 w-full text-slate-500 hover:text-slate-800 transition-colors'>
-                        <CiCircleChevLeft className='w-5 h-5' /> Back to Home
-                    </button>
-                </div>
-            </div>
-        )
-    }
+            supabase.removeChannel(channel);
+        };
+    }, [sessionId, userId]);
 
     const colorOptions = (status) => {
         switch (status) {
@@ -382,148 +386,203 @@ const Session = () => {
         }
     }
 
+    // === ALL RENDER RETURNS REMAIN EXACTLY THE SAME AS YOUR UI ===
+    
+    if (loading) return (
+        <div className="flex justify-center items-center h-screen bg-slate-50">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-700"></div>
+        </div>
+    )
+
+    if (!session) return (
+        <div className="flex justify-center items-center h-screen bg-slate-50 text-slate-600 text-lg">
+            Session not found
+        </div>
+    )
+
+    if (waitingAccept) return (
+        <div className='flex flex-col items-center gap-4 justify-center h-screen bg-slate-50'>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center max-w-md">
+                <div className="animate-pulse bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FaUsers className="w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-semibold text-slate-800 mb-2">Request Sent</h2>
+                <p className="text-slate-500">Waiting for the session owner to accept your request...</p>
+            </div>
+        </div>
+    )
+
+    if (!inSession && isOwner) return (
+        <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">Rejoin Your Session</h2>
+                <p className="text-slate-500 mb-6">You left this session. Enter your name to rejoin.</p>
+                <form onSubmit={handleOwnerRejoin} className='flex flex-col gap-4'>
+                    <input type="text" name='userName' placeholder='Enter your username' className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 outline-none' required />
+                    <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors'>Rejoin Session</button>
+                </form>
+            </div>
+        </div>
+    )
+
+    if (!inSession && !isOwner) return (
+        <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">Join Session</h2>
+                <p className="text-slate-500 mb-6">You need to request access to view this session.</p>
+                <form onSubmit={handleRequestJoin} className='flex flex-col gap-4'>
+                    <input type="text" name='userName' placeholder='Enter your username' className='w-full border border-slate-200 rounded-lg py-3 px-4 focus:ring-2 focus:ring-slate-500 outline-none' required />
+                    <button type='submit' className='w-full bg-slate-800 text-white rounded-lg py-3 px-4 font-medium hover:bg-slate-700 transition-colors'>Request to Join</button>
+                </form>
+            </div>
+        </div>
+    )
+
     return (
-        <div className='min-h-screen bg-slate-50 pb-12'>
-            <div className='max-w-5xl mx-auto px-4 py-8 space-y-6'>
-                <button 
-                onClick={() => navigate('/')}
-                className='flex items-center gap-2 text-xl text-black/50 hover:text-black transition-all cursor-pointer'>
-                    <IoMdArrowBack />
-                    Home page
-                    
+        <div className='min-h-screen bg-[#F3E4C9]/20 pb-12 font-sans'>
+            <div className='max-w-7xl mx-auto px-4 py-8 space-y-8'>
+                <button onClick={() => navigate('/')} className='group flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors w-fit'>
+                    <CiCircleChevLeft className='w-6 h-6 group-hover:-translate-x-1 transition-transform' /> Back to Home
                 </button>
+
                 {/* Header Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className='flex flex-col gap-2'>
-                        <div className="flex items-center gap-3">
-                            <h1 className='text-3xl font-bold text-slate-800'>{session.title}</h1>
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorOptions(session.status)}`}>
-                                {session.status}
-                            </span>
+                <div className="bg-[#0A2947] rounded-3xl shadow-sm border border-slate-100 p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-green-50 rounded-full blur-3xl -z-10 opacity-60 translate-x-1/2 -translate-y-1/2"></div>
+                    <div className='flex flex-col gap-3'>
+                        <div className="flex items-center gap-4">
+                            <h1 className='text-4xl font-bold text-slate-300 tracking-tight'>{session.title}</h1>
+                            <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${colorOptions(session.status)}`}>{session.status}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <span className="truncate max-w-[200px] sm:max-w-md">{window.location.href}</span>
-                            <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success("Copied to clipboard") }}
-                                className='p-1.5 hover:bg-slate-100 rounded-md transition-colors text-slate-600 hover:text-slate-900'>
+                        <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-200 w-fit px-3 py-1.5 rounded-lg border border-slate-100">
+                            <span className="truncate max-w-[200px] sm:max-w-md font-mono text-xs">{window.location.href}</span>
+                            <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success("Copied to clipboard") }} className='p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-400 hover:text-slate-700'>
                                 <FaCopy />
                             </button>
                         </div>
-                        {isOwner && (
-                            <div>
-                                <p className='bg-green-100 text-green-800 w-fit px-3 py-1 rounded-full text-sm font-medium'>You are the host of the session</p>
-                            </div>
-                        )}
+                        {isOwner && <p className='text-green-600 flex items-center gap-1.5 text-sm font-medium mt-1'><FaCheckCircle /> You are the host</p>}
                     </div>
 
-                    <button onClick={handleLeaveSession} className='text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-5 py-2.5 font-medium transition-colors w-full md:w-auto'>
+                    <button onClick={() => setShowLeave(true)} className='text-red-400 cursor-pointer bg-red-400/20 hover:bg-red-200 border border-red-300 rounded-xl px-6 py-3 font-semibold transition-all hover:shadow-sm w-full md:w-auto'>
                         Leave Session
                     </button>
                 </div>
 
+                {showLeaveSession && (
+                    <PopUp title='Leave Session' message='Are you sure you want to leave the session? You can always request to rejoin later.' onConfirm={handleLeaveSession} onCancel={() => setShowLeave(false)} />
+                )}
+
                 {/* Main Content Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     {/* Left Column: Users & Queue */}
-                    <div className="space-y-6 lg:col-span-1">
+                    <div className="space-y-6 lg:col-span-4">
+                        {isOwner && queue.length > 0 && (
+                            <div className="bg-white rounded-3xl shadow-sm border border-amber-200 p-6 mb-6">
+                                <h3 className="text-xl font-bold text-amber-600 mb-4 flex items-center gap-2"><FaUsers /> Waitlist ({queue.length})</h3>
+                                <div className='flex flex-col gap-3'>
+                                    {queue.map(req => (
+                                        <div key={req.userId} className="flex justify-between items-center bg-amber-50 p-3 rounded-xl border border-amber-100">
+                                            <span className="font-semibold text-slate-700">{req.userName}</span>
+                                            <button onClick={() => handleAcceptRequest(req.userId, req.userName)} className="bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-600">Accept</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
-                        {/* Owner Queue Panel */}
-                        {isOwner && queue && queue.length > 0 && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <span className="bg-yellow-100 text-yellow-700 p-1.5 rounded-md"><FaUsers /></span>
-                                    Pending Requests ({queue.length})
-                                </h3>
+                        <div className="bg-slate-100 rounded-3xl shadow-sm border border-slate-100 p-6 sticky top-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-xl font-bold text-slate-800">Users</h3>
+                                <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-lg">{users.length}</span>
+                            </div>
 
-                                <div className="space-y-3 mb-4 max-h-48 overflow-y-auto pr-2">
-                                    {queue.map((user) => (
-                                        <div key={user.userId} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                            <span className="font-medium text-slate-700">{user.userName}</span>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleAcceptRequest(user.userId)} className="p-1.5 bg-green-100 text-green-700 hover:bg-green-200 rounded-md transition-colors"><FaCheck size={14} /></button>
-                                                <button onClick={() => handleRejectRequest(user.userId)} className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors"><FaTimes size={14} /></button>
+                            {users && users.length > 0 ? (
+                                <div className='flex flex-col gap-3'>
+                                    {users.map((user) => (
+                                        <div key={user.userId} className="group flex bg-white items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-green-200 text-green-700 flex items-center justify-center font-bold shadow-sm border border-green-200/50">
+                                                {user.userName.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-slate-700 leading-tight">{user.userName}</span>
+                                                <div className="flex gap-2 mt-0.5">
+                                                    {user.userId === session.createdBy && <span className="text-[10px] text-green-600 font-bold uppercase tracking-wider">Host</span>}
+                                                    {user.userId === userId && <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">You</span>}
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                {/* <div className="flex gap-2 text-sm pt-3 border-t border-slate-100">
-                                    <button onClick={handleAcceptAllRequests} className="flex-1 py-2 text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors font-medium">Accept All</button>
-                                    <button onClick={handleRejectAllRequests} className="flex-1 py-2 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors font-medium">Reject All</button>
-                                </div> */}
-                            </div>
-                        )}
-
-                        {/* Active Users Panel */}
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                Users ({users.length})
-                            </h3>
-                            {users && users.length > 0 ? (
-                                <div className='flex flex-wrap gap-2'>
-                                    {users.map((user) => (
-                                        <div key={user.userId} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                            {user.userName}{user.userId === session.createdBy ? " (Host)" : ""}{user.userId === userId ? " (You)" : ""}
-                                        </div>
-                                    ))}
-                                </div>
                             ) : (
-                                <p className="text-slate-500 text-sm text-center py-4 italic">No users in this session</p>
+                                <p className="text-slate-400 text-sm text-center py-8">No users in this session yet.</p>
                             )}
                         </div>
                     </div>
 
                     {/* Right Column: Items */}
-                    <div className="lg:col-span-2 space-y-6">
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                            <div className="flex justify-between items-center mb-6">
+                    <div className="lg:col-span-8 space-y-6">
+                        <div className="bg-slate-100 rounded-3xl shadow-sm border border-slate-100 p-8">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                                 <div>
-                                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                    <FaShoppingCart className="text-slate-400" /> Session Items
-                                </h3>
-                                <p className="text-sm text-slate-500">Note: For taxes and delievery services you can add them as separate items and select all members as contrubtors</p>
+                                    <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-3 mb-1">
+                                        <div className="p-2 bg-blue-50 text-blue-500 rounded-xl"><FaShoppingCart size={18} /></div>
+                                        Session Items
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium">Add everything here, including tax and delivery.</p>
                                 </div>
-                                {!showAddItem && (
-                                    <button
-                                        onClick={() => setShowAddItem(true)}
-                                        className='flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-slate-700 transition-colors'>
-                                        <FaPlus size={12} /> Add Item
-                                    </button>
-                                )}
-                                
+
+                                <div className="flex gap-3 w-full sm:w-auto">
+                                    {!showAddItem && (
+                                        <button onClick={() => setShowAddItem(true)} className='flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-700 hover:shadow-md hover:-translate-y-0.5 transition-all'>
+                                            <FaPlus size={14} /> Add Item
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            <button className={`flex items-center gap-2 w-full justify-center mb-4 bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors ${items.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                <FaCalculator size={12} /> Calculate Session Total
+
+                            <button onClick={handleCalculateTotal} disabled={items.length === 0 || isCalculating} className={`w-full flex items-center justify-center gap-2 mb-8 bg-green-500 text-white px-6 py-4 rounded-2xl font-bold text-lg hover:bg-green-600 transition-all ${(items.length === 0 || isCalculating) ? 'opacity-50 cursor-not-allowed' : 'transform hover:-translate-y-0.5 hover:shadow-lg hover:shadow-green-500/20'}`}>
+                                <FaCalculator size={18} />
+                                {isCalculating ? 'Calculating...' : 'Calculate Final Split'}
                             </button>
-                            
 
                             {/* Add Item Form */}
                             {showAddItem && (
-                                <div className="mb-8 p-5 bg-slate-50 border border-slate-200 rounded-xl">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="font-semibold text-slate-700">New Item</h4>
-                                        <button onClick={() => setShowAddItem(false)} className="text-slate-400 hover:text-slate-600"><FaTimes /></button>
+                                <div className="mb-8 p-6 bg-slate-50 border border-slate-100 rounded-3xl shadow-inner">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h4 className="text-lg font-bold text-slate-800">New Item</h4>
+                                        <button onClick={() => setShowAddItem(false)} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-full transition-colors"><FaTimes /></button>
                                     </div>
-                                    <form onSubmit={(e) => handleAddItem(e)} className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-                                        <input type="text" placeholder='Item Name' name='itemName' className='col-span-1 sm:col-span-2 border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
-                                        <input type="number" step="0.01" placeholder='Price' name='itemPrice' className='border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
-                                        <input type="number" placeholder='Quantity' name='itemQuantity' className='border border-slate-300 px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none' required />
+                                    <form onSubmit={handleAddItem} className='grid grid-cols-1 sm:grid-cols-2 gap-5'>
+                                        <input type="text" placeholder='Item Name' name='itemName' className='col-span-1 sm:col-span-2 border border-slate-200 px-4 py-3 rounded-xl focus:ring-4 focus:ring-slate-500/10 focus:border-slate-500 outline-none transition-all shadow-sm' required />
+                                        <input type="number" step="0.01" placeholder='Price (£)' name='itemPrice' className='border border-slate-200 px-4 py-3 rounded-xl focus:ring-4 focus:ring-slate-500/10 focus:border-slate-500 outline-none transition-all shadow-sm' required />
+                                        <input type="number" placeholder='Quantity' name='itemQuantity' className='border border-slate-200 px-4 py-3 rounded-xl focus:ring-4 focus:ring-slate-500/10 focus:border-slate-500 outline-none transition-all shadow-sm' required />
 
-                                        <div className="col-span-1 sm:col-span-2">
+                                        <div className="col-span-1 sm:col-span-2 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-sm font-semibold text-slate-600">Who is splitting this?</label>
+                                                <button type="button" className='text-xs font-bold bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-300 transition-colors' onClick={() => setSelectedOptions(listOfUsers)}>Select All</button>
+                                            </div>
                                             <Select
-                                                className='react-select-container'
                                                 classNamePrefix='react-select'
                                                 options={listOfUsers}
                                                 value={selectedOptions}
                                                 onChange={handleSelectChange}
                                                 isMulti={true}
-                                                placeholder='Select who shares this...'
+                                                placeholder='Select friends...'
+                                                styles={{ control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.25rem', borderColor: '#e2e8f0' }) }}
                                             />
-                                            <button  type="button" className='bg-green-500 text-white mt-2 p-2 rounded-lg' onClick={()=>setSelectedOptions(listOfUsers)}>select all</button>
                                         </div>
 
-                                        <button type="submit" className='col-span-1 sm:col-span-2 bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors'>
-                                            Save Item
-                                        </button>
+                                        {selectedOptions.length > 0 && (
+                                            <div className='col-span-1 sm:col-span-2 flex flex-wrap gap-2'>
+                                                {selectedOptions.map((option) => (
+                                                    <div key={option.value} className='flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 shadow-sm'>
+                                                        <p className='text-xs font-bold tracking-wide'>{option.label}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <button type="submit" className='col-span-1 sm:col-span-2 mt-2 bg-slate-800 text-white py-3.5 rounded-xl font-bold text-lg hover:bg-slate-700 transition-all'>Save Item</button>
                                     </form>
                                 </div>
                             )}
@@ -532,49 +591,89 @@ const Session = () => {
                             {items && items.length > 0 ? (
                                 <div className='space-y-4'>
                                     {items.map((item) => (
-                                        <div key={item.id} className="border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-colors">
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div>
-                                                    <h4 className="text-lg font-bold text-slate-800">{item.name}</h4>
-                                                    <p className="text-sm text-slate-500">Qty: {item.quantity}</p>
+                                        <div key={item.id} className="group relative flex flex-col sm:flex-row justify-between items-start sm:items-center p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all gap-4">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3 mb-1">
+                                                    <h4 className="text-xl font-bold text-slate-800">{item.name}</h4>
+                                                    <span className="text-sm font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">Qty: {item.quantity}</span>
                                                 </div>
-                                                <div className="text-lg font-semibold text-slate-700">
-                                                    £{item.price}
-                                                </div>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                {/* Contributors list for the item */}
+
                                                 {itemContributors[item.id] && itemContributors[item.id].length > 0 && (
-                                                    <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center">
-                                                        <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Shared by:</span>
+                                                    <div className="mt-3 flex flex-wrap gap-2 items-center">
+                                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mr-1">Shared By</span>
                                                         {itemContributors[item.id].map((user) => (
-                                                            <span key={user.userId} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
-                                                                {user.userName}
-                                                            </span>
+                                                            <span key={user.userId} className="bg-blue-50/80 text-blue-600 border border-blue-100 px-2.5 py-1 rounded-full text-xs font-semibold">{user.userName}</span>
                                                         ))}
                                                     </div>
                                                 )}
-                                                <button className='text-red-500 bg-red-200 p-2 rounded-lg cursor-pointer hover:bg-red-300 transition-colors'
-                                                    onClick={() => handleDeleteItem(item.id)}
-                                                ><FaTrash /></button>
+                                            </div>
+
+                                            <div className="flex items-center justify-between w-full sm:w-auto gap-6 sm:pl-6 sm:border-l border-slate-100">
+                                                <div className="text-2xl font-black text-slate-800 tracking-tight">£{item.price * item.quantity}</div>
+                                                <button onClick={() => handleDeleteItem(item.id)} className='p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer'><FaTrash size={16} /></button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
                                 !showAddItem && (
-                                    <div className='flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50'>
-                                        <FaShoppingCart className="text-slate-300 w-12 h-12 mb-3" />
-                                        <p className="text-slate-500 text-center">No items added yet. Start adding items to split the bill!</p>
+                                    <div className='flex flex-col items-center justify-center py-16 px-4 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50'>
+                                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 mb-4">
+                                            <FaShoppingCart className="text-slate-300 w-8 h-8" />
+                                        </div>
+                                        <p className="text-slate-500 font-medium text-center">Your table is empty.<br />Start adding items to split the bill!</p>
                                     </div>
                                 )
                             )}
                         </div>
                     </div>
-
                 </div>
             </div>
-            <Toaster position="bottom-right" reverseOrder={false} />
+
+            {/* Final Receipt Modal */}
+            {showReceiptModal && receipts && (
+                <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4' onClick={() => setShowReceiptModal(false)}>
+                    <div className='relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]' onClick={e => e.stopPropagation()}>
+                        <div className='p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl'>
+                            <div>
+                                <h2 className='text-2xl font-bold text-slate-800'>Final Receipt</h2>
+                                <p className='text-slate-500 mt-1'>Total Session Cost: <span className='font-bold text-green-600 text-lg'>£{sessionTotal}</span></p>
+                            </div>
+                            <button onClick={() => setShowReceiptModal(false)} className='p-2 hover:bg-slate-200 rounded-full transition-colors'><FaTimes className='text-slate-500 w-5 h-5' /></button>
+                        </div>
+
+                        <div className='p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50/50'>
+                            {receipts.map(receipt => (
+                                <div key={receipt.userId} className='bg-white border border-slate-200 rounded-xl p-5 shadow-sm'>
+                                    <div className='flex justify-between items-center mb-4 pb-4 border-b border-slate-100'>
+                                        <div className='flex items-center gap-3'>
+                                            <div className='w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg'>{receipt.userName.charAt(0).toUpperCase()}</div>
+                                            <h3 className='font-bold text-xl text-slate-800'>{receipt.userName}</h3>
+                                        </div>
+                                        <div className='bg-green-100 text-green-800 px-4 py-2 rounded-lg font-bold text-lg border border-green-200'>Owes: £{receipt.totalOwed}</div>
+                                    </div>
+                                    <div className='space-y-2'>
+                                        <p className='text-xs font-bold text-slate-400 uppercase tracking-wider mb-2'>Item Breakdown</p>
+                                        <ul className='space-y-2 text-sm text-slate-600'>
+                                            {receipt.itemizedBreakdown.map((item, idx) => (
+                                                <li key={idx} className='flex justify-between items-center p-2 rounded hover:bg-slate-50 transition-colors'>
+                                                    <div className='flex items-center gap-2'><div className='w-1.5 h-1.5 rounded-full bg-slate-300'></div><span>{item.itemName}</span></div>
+                                                    <span className='font-medium text-slate-700'>£{item.splitShare}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className='p-6 border-t border-slate-100 flex justify-end gap-3 bg-white rounded-b-2xl'>
+                            <button onClick={() => setShowReceiptModal(false)} className='px-6 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-medium transition-colors w-full sm:w-auto'>Close Receipt</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <Toaster position="top-center" reverseOrder={false} />
         </div>
     )
 }
