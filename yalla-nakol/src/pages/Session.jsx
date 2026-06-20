@@ -21,6 +21,7 @@ const Session = () => {
     const [selectedOptions, setSelectedOptions] = useState([])
     const [waitingAccept, setWaitingAccept] = useState(false);
     const [queue, setQueue] = useState([])
+    
     const [itemContributors, setItemContributors] = useState({})
       // 2. REFACTORED: Generate Device ID locally instead of pinging a server
     const checkUserId = () => {
