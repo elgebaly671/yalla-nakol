@@ -23,10 +23,10 @@ const Home = () => {
         e.preventDefault();
         try {
             const { error } = await supabase
-                .from('session')
+                .from('sessions')
                 .insert([
                     {
-                        userId: userId,
+                        createdBy: userId,
                         title: e.target.title.value,
                         userName: e.target.userName.value,
                         status: 'active',
