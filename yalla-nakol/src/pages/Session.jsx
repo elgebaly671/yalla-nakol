@@ -168,6 +168,7 @@ const Session = () => {
             const { error } = await supabase
                 .from('requestjoin')
                 .insert([{
+                    id: crypto.randomUUID(),
                     sessionId,
                     userId,
                     userName: e.target.userName.value,
@@ -257,6 +258,7 @@ const Session = () => {
                 .from('items')
                 .insert([{
                     sessionId,
+                    userId,
                     name: e.target.itemName.value,
                     price: parseFloat(e.target.itemPrice.value),
                     quantity: parseInt(e.target.itemQuantity.value)
@@ -269,6 +271,7 @@ const Session = () => {
             // 2. Insert Contributors
             if (selectedOptions.length > 0) {
                 const contributorInserts = selectedOptions.map(option => ({
+                    sessionId,
                     itemId: newItem.id,
                     userId: option.value,
                     userName: option.label
@@ -280,7 +283,7 @@ const Session = () => {
 
                 if (contribError) throw contribError;
             }
-
+            fetchSessionItems()
             toast.success("Item added successfully");
             setSelectedOptions([]);
             setShowAddItem(false);
@@ -295,9 +298,9 @@ const Session = () => {
                 .from('items')
                 .delete()
                 .eq('id', itemId);
-
             if (error) throw error;
             toast.success("Item deleted");
+            fetchSessionItems()
         } catch (error) {
             toast.error(error.message);
         }
@@ -351,32 +354,48 @@ const Session = () => {
         setIsCalculating(false);
     }
 
-    // 3. Supabase Realtime Subscriptions (Replaces Socket.io)
+  // 3. Supabase Realtime Subscriptions (Replaces Socket.io)
     useEffect(() => {
         checkUserAccess();
         fetchSession();
         fetchSessionItems();
         fetchSessionUsers();
 
-        // Inside your useEffect
-        const channel = supabase.channel(`session_updates_${sessionId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `sessionId=eq.${sessionId}` }, () => {
+        // 1. FIX: Add a random ID to the channel name to prevent React Strict Mode race conditions
+        const channelName = `session_${sessionId}_${Math.random().toString(36).substring(7)}`;
+        const channel = supabase.channel(channelName);
+
+        channel
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `sessionId=eq.${sessionId}` }, (payload) => {
+                console.log("⚡ ITEMS CHANGED:", payload);
                 fetchSessionItems();
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'insession', filter: `sessionId=eq.${sessionId}` }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'itemsharing', filter: `sessionId=eq.${sessionId}` }, (payload) => {
+                console.log("⚡ ITEM SHARING CHANGED:", payload);
+                fetchSessionItems(); 
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'insession', filter: `sessionId=eq.${sessionId}` }, (payload) => {
+                console.log("⚡ USERS IN SESSION CHANGED:", payload);
                 fetchSessionUsers();
                 checkUserAccess();
             })
-            // Add this new listener for the queue table
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'requestjoin', filter: `sessionId=eq.${sessionId}` }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'requestjoin', filter: `sessionId=eq.${sessionId}` }, (payload) => {
+                console.log("⚡ WAITLIST CHANGED:", payload);
                 getSessionQueue();
                 checkUserAccess();
             })
-            .subscribe();
+            .subscribe((status, err) => {
+                // 2. FIX: Force Supabase to report its connection status
+                console.log(`📡 Realtime Status: ${status}`);
+                if (err) console.error("Realtime Error:", err);
+            });
+
         return () => {
+            console.log("🧹 Cleaning up Supabase channel...");
             supabase.removeChannel(channel);
         };
     }, [sessionId, userId]);
+
 
     const colorOptions = (status) => {
         switch (status) {
