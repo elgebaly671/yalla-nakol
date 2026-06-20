@@ -22,7 +22,22 @@ const Session = () => {
     const [waitingAccept, setWaitingAccept] = useState(false);
     const [queue, setQueue] = useState([])
     const [itemContributors, setItemContributors] = useState({})
-
+      // 2. REFACTORED: Generate Device ID locally instead of pinging a server
+    const checkUserId = () => {
+        if (!userId) {
+            try {
+                let existingId = localStorage.getItem('yallaID');
+                if (!existingId) {
+                    // Generates a standard, secure UUID directly in the browser
+                    existingId = crypto.randomUUID(); 
+                    localStorage.setItem('yallaID', existingId);
+                }
+                setUserId(existingId);
+            } catch (error) {
+                toast.error("Failed to assign Device ID");
+            }
+        }
+    };
     // Receipt States
     const [receipts, setReceipts] = useState(null);
     const [sessionTotal, setSessionTotal] = useState(0);
@@ -164,7 +179,6 @@ const Session = () => {
 
     const handleRequestJoin = async (e) => {
         e.preventDefault();
-        checkUserAccess()
         try {
             const { error } = await supabase
                 .from('requestjoin')
