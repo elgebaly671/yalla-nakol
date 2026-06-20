@@ -22,19 +22,28 @@ const Home = () => {
     const handleCreateSession = async (e) => {
         e.preventDefault();
         try {
+            const ID = crypto.randomUUID()
             const { error } = await supabase
                 .from('sessions')
                 .insert([
                     {
+                        id: ID,
                         createdBy: userId,
                         title: e.target.title.value,
-                        userName: e.target.userName.value,
+                        createdAt: new Date().toISOString(),
+                        updatedAt:  new Date().toISOString(),
                         status: 'active',
                         totalExpenses: 0
                     }
                 ]);
-
-            if (error) throw error;
+            const {error: insessionError} = await supabase
+            .from('insession')
+            .insert([{
+                userId: userId,
+                sessionId: ID,
+                userName: e.target.userName.value
+            }]);
+            if (error || insessionError) throw error;
 
             toast.success("Session created successfully");
             setShowForm(false);

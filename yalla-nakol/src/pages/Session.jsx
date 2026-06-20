@@ -22,7 +22,7 @@ const Session = () => {
     const [waitingAccept, setWaitingAccept] = useState(false);
     const [queue, setQueue] = useState([])
     const [itemContributors, setItemContributors] = useState({})
-    
+
     // Receipt States
     const [receipts, setReceipts] = useState(null);
     const [sessionTotal, setSessionTotal] = useState(0);
@@ -37,7 +37,7 @@ const Session = () => {
         label: user.userName
     }))
 
-   // 1. Unified Access Check (Checks both tables)
+    // 1. Unified Access Check (Checks both tables)
     const checkUserAccess = async () => {
         try {
             // First, check if they are already an active member
@@ -78,7 +78,7 @@ const Session = () => {
                 .select('*')
                 .eq('id', sessionId)
                 .single();
-            
+
             if (error) throw error;
             setSession(data);
             setIsOwner(data.createdBy === userId);
@@ -99,7 +99,7 @@ const Session = () => {
                 .from('items')
                 .select('*')
                 .eq('sessionId', sessionId);
-            
+
             if (itemsError) throw itemsError;
             setItems(itemsData || []);
             fetchItemContributors(itemsData || []);
@@ -112,7 +112,7 @@ const Session = () => {
         try {
             if (itemsList.length === 0) return;
             const itemIds = itemsList.map(i => i.id);
-            
+
             const { data, error } = await supabase
                 .from('itemsharing')
                 .select('*')
@@ -127,7 +127,7 @@ const Session = () => {
                 }
                 contributorsMap[contributor.itemId].push(contributor);
             });
-            
+
             setItemContributors(contributorsMap);
         } catch (error) {
             toast.error(error.message);
@@ -154,7 +154,7 @@ const Session = () => {
                 .from('requestjoin')
                 .select('*')
                 .eq('sessionId', sessionId);
-            
+
             if (error) throw error;
             setQueue(data || []);
         } catch (error) {
@@ -174,7 +174,7 @@ const Session = () => {
                 }]);
 
             if (error) throw error;
-            
+
             toast.success("Request sent successfully");
             setWaitingAccept(true);
         } catch (error) {
@@ -240,7 +240,7 @@ const Session = () => {
                 .eq('userId', userId);
 
             if (error) throw error;
-            
+
             toast.success("You left the session");
             setInSession(false);
             setShowLeave(false);
@@ -311,7 +311,7 @@ const Session = () => {
     const handleCalculateTotal = () => {
         setIsCalculating(true);
         let total = 0;
-        const userTotals = {}; 
+        const userTotals = {};
 
         // Initialize user objects
         users.forEach(u => {
@@ -326,7 +326,7 @@ const Session = () => {
             const contributors = itemContributors[item.id] || [];
             if (contributors.length > 0) {
                 const splitAmount = itemTotal / contributors.length;
-                
+
                 contributors.forEach(c => {
                     if (!userTotals[c.userId]) {
                         userTotals[c.userId] = { userId: c.userId, userName: c.userName, totalOwed: 0, itemizedBreakdown: [] };
@@ -339,7 +339,7 @@ const Session = () => {
                 });
             }
         });
-        
+
         // Format for state display
         const receiptsArray = Object.values(userTotals)
             .map(r => ({ ...r, totalOwed: r.totalOwed.toFixed(2) }))
@@ -350,7 +350,7 @@ const Session = () => {
         setShowReceiptModal(true);
         setIsCalculating(false);
     }
- 
+
     // 3. Supabase Realtime Subscriptions (Replaces Socket.io)
     useEffect(() => {
         checkUserAccess();
@@ -358,21 +358,21 @@ const Session = () => {
         fetchSessionItems();
         fetchSessionUsers();
 
-          // Inside your useEffect
-    const channel = supabase.channel(`session_updates_${sessionId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `sessionId=eq.${sessionId}` }, () => {
-            fetchSessionItems(); 
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'insession', filter: `sessionId=eq.${sessionId}` }, () => {
-            fetchSessionUsers(); 
-            checkUserAccess(); 
-        })
-        // Add this new listener for the queue table
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'requestjoin', filter: `sessionId=eq.${sessionId}` }, () => {
-            getSessionQueue(); 
-            checkUserAccess(); 
-        })
-        .subscribe();
+        // Inside your useEffect
+        const channel = supabase.channel(`session_updates_${sessionId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `sessionId=eq.${sessionId}` }, () => {
+                fetchSessionItems();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'insession', filter: `sessionId=eq.${sessionId}` }, () => {
+                fetchSessionUsers();
+                checkUserAccess();
+            })
+            // Add this new listener for the queue table
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'requestjoin', filter: `sessionId=eq.${sessionId}` }, () => {
+                getSessionQueue();
+                checkUserAccess();
+            })
+            .subscribe();
         return () => {
             supabase.removeChannel(channel);
         };
@@ -387,7 +387,7 @@ const Session = () => {
     }
 
     // === ALL RENDER RETURNS REMAIN EXACTLY THE SAME AS YOUR UI ===
-    
+
     if (loading) return (
         <div className="flex justify-center items-center h-screen bg-slate-50">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-700"></div>
@@ -414,6 +414,9 @@ const Session = () => {
 
     if (!inSession && isOwner) return (
         <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
+            <button onClick={() => navigate('/home')} className='group flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors w-fit'>
+                <CiCircleChevLeft className='w-6 h-6 group-hover:-translate-x-1 transition-transform' /> Back to Home
+            </button>
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Rejoin Your Session</h2>
                 <p className="text-slate-500 mb-6">You left this session. Enter your name to rejoin.</p>
@@ -427,6 +430,9 @@ const Session = () => {
 
     if (!inSession && !isOwner) return (
         <div className='flex flex-col items-center justify-center h-screen bg-slate-50 p-4'>
+            <button onClick={() => navigate('/home')} className='group flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors w-fit'>
+                <CiCircleChevLeft className='w-6 h-6 group-hover:-translate-x-1 transition-transform' /> Back to Home
+            </button>
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md text-center">
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Join Session</h2>
                 <p className="text-slate-500 mb-6">You need to request access to view this session.</p>
@@ -441,7 +447,7 @@ const Session = () => {
     return (
         <div className='min-h-screen bg-[#F3E4C9]/20 pb-12 font-sans'>
             <div className='max-w-7xl mx-auto px-4 py-8 space-y-8'>
-                <button onClick={() => navigate('/')} className='group flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors w-fit'>
+                <button onClick={() => navigate('/home')} className='group flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors w-fit'>
                     <CiCircleChevLeft className='w-6 h-6 group-hover:-translate-x-1 transition-transform' /> Back to Home
                 </button>
 
