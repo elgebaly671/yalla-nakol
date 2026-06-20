@@ -23,7 +23,7 @@ const Home = () => {
         e.preventDefault();
         try {
             const { error } = await supabase
-                .from('sessions')
+                .from('session')
                 .insert([
                     {
                         userId: userId,
@@ -66,7 +66,7 @@ const Home = () => {
     const fetchSessions = async () => {
         try {
             const { data, error } = await supabase
-                .from('sessions')
+                .from('session')
                 .select('*')
                 .eq('createdBy', userId)
                 .order('createdAt', { ascending: false });
