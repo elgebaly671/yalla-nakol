@@ -179,6 +179,7 @@ const Session = () => {
 
     const handleRequestJoin = async (e) => {
         e.preventDefault();
+        checkUserId()
         try {
             const { error } = await supabase
                 .from('requestjoin')
